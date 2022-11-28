@@ -8,6 +8,7 @@ program.
 Authors: Your dear 2022.Spring.teaching_staff
 (Eduardo Jorquera, Ignacio Dassori & Felipe Vergara)
 """
+import cv2
 import matplotlib.pyplot as plt
 import math
 import numpy as np
@@ -59,7 +60,7 @@ class EL5206_Robot:
         rospy.Subscriber("/ground_truth/state", Odometry,  self.groundTruthCallback)
         rospy.Subscriber("/scan",               LaserScan, self.scanCallback)
         rospy.Subscriber("/target_pose",        Pose2D,    self.poseCallback)
-        rospy.Subscriber("/stalker/image_raw",  Image,     self.imageCallback)
+        rospy.Subscriber("/stalker/camera_link_camera/camera_link_camera/depth/image_raw",  Image,     self.imageCallback)
 
         # Publishers
         self.vel_pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
@@ -79,8 +80,9 @@ class EL5206_Robot:
     main code.
     """
 
-    def imageCallback(self,msg):
+    def imageCallback(self, msg):
         self.currentImage = msg
+        #self.currentImage = self.bridge.imgmsg_to_cv(msg, "brg8")
 
 
     def scanCallback(self, msg):
@@ -548,15 +550,25 @@ class EL5206_Robot:
         # END: YOUR CODE HERE
         pass
 
-#    def prueba_giro()
+    #    def prueba_giro()
 
-    def cam_test(self,counts = 1):
+    def cam_test(self, counts = 1):
         for _ in range(counts):
-            print(self.currentImage)
+            data = self.currentImage
+            #print(self.currentImage)
             print(type(self.currentImage),"\n")
+            image_np = np.frombuffer(data.data, dtype=np.uint8).reshape(data.height, data.width, -1)
+            print(image_np.shape)
+            
+            depth = np.copy(image_np[:,:,3])
+#            depth[depth>100] = 0
+            print(depth.min(), depth.max())
+            
+            
+            plt.imshow(depth/(127-62))
+            plt.colorbar()
+            plt.show()
             time.sleep(1)
-
-
 
 if __name__ == '__main__':
     node = EL5206_Robot()
