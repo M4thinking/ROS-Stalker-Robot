@@ -550,11 +550,11 @@ class EL5206_Robot:
 
 #    def prueba_giro()
 
-def cam_test(self,counts = 10):
-    for _ in range(counts):
-        print(self.currentImage)
-        print(type(self.currentImage),"\n")
-        time.sleep(1)
+    def cam_test(self,counts = 1):
+        for _ in range(counts):
+            print(self.currentImage)
+            print(type(self.currentImage),"\n")
+            time.sleep(1)
 
 
 
