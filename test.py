@@ -34,6 +34,7 @@ class EL5206_Robot:
         self.odom_frame_id  = 'odom'
         self.currentScan =  None
         self.currentImage = None
+        self.currentDepth = None
 
         self.odom_x   = None
         self.odom_y   = None
@@ -81,7 +82,10 @@ class EL5206_Robot:
     """
 
     def imageCallback(self, msg):
-        self.currentImage = msg
+
+        image_np = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width, -1)
+        self.currentImage = image_np[:,:,:3]
+        self.currentDepth = image_np[:,:,3]
         #self.currentImage = self.bridge.imgmsg_to_cv(msg, "brg8")
 
 
