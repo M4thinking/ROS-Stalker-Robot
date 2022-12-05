@@ -1,0 +1,8 @@
+prefix=/home/diego/el5206_ws/devel
+
+Name: el5206_description
+Description: Description of el5206_description
+Version: 1.2.5
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: urdf xacro

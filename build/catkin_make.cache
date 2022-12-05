@@ -1,0 +1,2 @@
+el5206_description:el5206_example:el5206_gazebo
+-DCATKIN_DEVEL_PREFIX=/home/diego/el5206_ws/devel -DCMAKE_INSTALL_PREFIX=/home/diego/el5206_ws/install -G Unix Makefiles
