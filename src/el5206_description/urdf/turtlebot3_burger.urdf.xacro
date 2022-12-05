@@ -2,7 +2,7 @@
 <robot name="turtlebot3_burger" xmlns:xacro="http://ros.org/wiki/xacro">
   <xacro:include filename="$(find el5206_description)/urdf/common_properties.xacro"/>
   <xacro:include filename="$(find el5206_description)/urdf/turtlebot3_burger.gazebo.xacro"/>
-  <xacro:include filename="$(find el5206_description)/camera.xacro" /> 
+   
 
   <link name="base_footprint"/>
 
