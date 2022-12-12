@@ -370,6 +370,7 @@ class EL5206_Robot:
             plt.show()
             time.sleep(1)
 
+
 if __name__ == '__main__':
     node = EL5206_Robot()
     print("EL5206 Node started!")
