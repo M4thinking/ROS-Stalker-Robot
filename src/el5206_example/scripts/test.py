@@ -306,26 +306,40 @@ class EL5206_Robot:
 
         return cv2.circle(mask_bin, (x_famous, y_famous), 10, (10, 0, 0)), rotate_angle
 
-    def rotate_to(self, angle):
+    def move_to(self, angle, distance):
         
         vel_angular = -0.2
+        vel_linear = -0.2
+
         twist_msg = Twist()
         twist_msg.linear.x  = 0.0
         twist_msg.angular.z = vel_angular * np.sign(angle)
         self.vel_pub.publish(twist_msg)
         time.sleep(np.abs(angle/vel_angular))
 
-        twist_msg = Twist()
+        twist_stop = Twist()
         twist_msg.linear.x  = 0.0
         twist_msg.angular.z = 0.0
+        self.vel_pub.publish(twist_stop)
+
+
+        twist_msg = Twist()
+        twist_msg.linear.x  = vel_linear
+        twist_msg.angular.z = 0.0
         self.vel_pub.publish(twist_msg)
+        time.sleep(np.abs(distance/vel_angular))
+
+        self.vel_pub.publish(twist_stop)
+
+
+
 
     def angle_follow(self, iterations=60):
         for _ in range(iterations):
             image = self.currentImage
 
             detection, rotate_angle = self.detect_famous(image)
-            self.rotate_to(rotate_angle)
+            self.move_to(rotate_angle, 0)
             time.sleep(0.5)
 
 
@@ -370,6 +384,46 @@ class EL5206_Robot:
             plt.show()
             time.sleep(1)
 
+    def compute_repulsion(self, laser):
+        F = 0 # Eje que mira hacia adelante
+        S = 0 # Eje perpoendicular a F
+
+        for d, theta in laser:
+            F -= np.sin(theta)/(d*d)
+            S -= np.cos(theta)/(d*d)
+        
+        F_r = np.linalg.norm(np.array([S, F]))
+        F_theta = np.arctan2(F,S)
+
+        return F_r, F_theta # repulsión en los ejes polares
+    
+    def folow_robot(self,k_a, k_r, timeout = 60):
+
+        start_time = time.time()
+        while time.time() - start_time < timeout and not rospy.is_shutdown():
+            
+            # Observación de los sensores
+            laser = self.get_laser()
+            image = self.currentImage
+
+            # Generamos la detección del robot
+            _, rotate_angle = self.detect_famous(image)
+
+            # Obtenemos la medición de la distancia con el laser (mejorable)
+            idx = np.abs(laser[:,1]-rotate_angle).argmin()
+            dist = laser[idx,0]
+
+            # Obtenemos las fuerzas de repuslsión de posibles obstáculos
+            F_rho, F_theta = self.compute_repulsion(laser)
+
+            F_rho_total = dist*k_a+F_rho*k_r # Fuerza en eje rho
+            F_theta_total = rotate_angle*k_a + F_theta*k_r
+
+            # Publicamos el movimiento del robot
+            self.move_to(F_theta_total, F_rho_total)
+            
+    print('Movimiento finalizado')
+
 
 if __name__ == '__main__':
     node = EL5206_Robot()
@@ -378,8 +432,10 @@ if __name__ == '__main__':
 
     try:
         #node.angle_follow()
-        node.show_video(10)
+        # node.show_video(10)
         #node.cam_test()
+
+        node.folow_robot(1,0.5)
 
     except rospy.ROSInterruptException:
         rospy.logerr("ROS Interrupt Exception! Just ignore the exception!")
