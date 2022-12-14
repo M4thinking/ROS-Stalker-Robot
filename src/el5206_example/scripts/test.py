@@ -59,6 +59,8 @@ class EL5206_Robot:
         # Extra variable to print odometry
         self.odom_i = 0
 
+        self.video = []
+
         # Subscribers
         rospy.Subscriber("/odom",               Odometry,  self.odometryCallback)
         rospy.Subscriber("/ground_truth/state", Odometry,  self.groundTruthCallback)
@@ -88,6 +90,8 @@ class EL5206_Robot:
     def imageCallback(self, msg):
         image_np = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width, -1)
         self.currentImage = image_np #[:,:,:3]
+
+        self.video.append(image_np)
         #self.currentDepth = image_np[:,:,3]
         #self.currentImage = self.bridge.imgmsg_to_cv(msg, "brg8")
 
@@ -431,6 +435,21 @@ class EL5206_Robot:
             self.move_to(F_theta_total, F_rho_total)
             
         print('Movimiento finalizado')
+
+    def save_pov(self, path):
+        frames = np.stack(self.video)
+        L,H,W,C = frames.shape
+        frameSize = (H, W)
+
+        out = cv2.VideoWriter(path,cv2.VideoWriter_fourcc(*'DIVX'), 60, frameSize)
+
+        for f in frames:
+            out.write(f)
+        
+        out.release()
+        
+
+
 
 
 if __name__ == '__main__':
