@@ -62,7 +62,7 @@ class EL5206_Robot:
         # Subscribers
         rospy.Subscriber("/odom",               Odometry,  self.odometryCallback)
         rospy.Subscriber("/ground_truth/state", Odometry,  self.groundTruthCallback)
-        rospy.Subscriber("/scan",               LaserScan, self.scanCallback)
+        rospy.Subscriber("/stalker/scan",               LaserScan, self.scanCallback)
         rospy.Subscriber("/target_pose",        Pose2D,    self.poseCallback)
         rospy.Subscriber("/stalker/camera_link_camera/camera_link_camera/color/image_raw",  Image,     self.imageCallback)
         rospy.Subscriber("/stalker/camera_link_camera/camera_link_camera/depth/image_raw",  Image,     self.depthCallback)
@@ -296,20 +296,21 @@ class EL5206_Robot:
         x_famous = int(x_famous/column_sum) if column_sum > 0 else 0
         y_famous = int(y_famous/row_sum) if row_sum > 0 else 0
 
-        mask_bin[y_famous, x_famous] = 10
+        # mask_bin[y_famous, x_famous] = 10
 
         x_center = img.shape[1]/2
 
-        rotate_angle = (x_famous - x_center) * self.camera_fov / img.shape[1]
+        rotate_angle = 0
+        if column_sum > 0 and row_sum > 0:
+            rotate_angle = (x_center - x_famous) * self.camera_fov / img.shape[1]
 
-        print(rotate_angle)
+        # print(rotate_angle)
 
-        return cv2.circle(mask_bin, (x_famous, y_famous), 10, (10, 0, 0)), rotate_angle
+        return mask_bin, rotate_angle
 
     def move_to(self, angle, distance):
-        
-        vel_angular = -0.2
-        vel_linear = -0.2
+        vel_angular = 0.2
+        vel_linear = 0.2
 
         twist_msg = Twist()
         twist_msg.linear.x  = 0.0
@@ -318,20 +319,17 @@ class EL5206_Robot:
         time.sleep(np.abs(angle/vel_angular))
 
         twist_stop = Twist()
-        twist_msg.linear.x  = 0.0
-        twist_msg.angular.z = 0.0
+        twist_stop.linear.x  = 0.0
+        twist_stop.angular.z = 0.0
         self.vel_pub.publish(twist_stop)
-
 
         twist_msg = Twist()
-        twist_msg.linear.x  = vel_linear
+        twist_msg.linear.x  = vel_linear * np.sign(distance)
         twist_msg.angular.z = 0.0
         self.vel_pub.publish(twist_msg)
-        time.sleep(np.abs(distance/vel_angular))
+        time.sleep(min(np.abs(distance/vel_linear), 0.5))
 
         self.vel_pub.publish(twist_stop)
-
-
 
 
     def angle_follow(self, iterations=60):
@@ -347,7 +345,6 @@ class EL5206_Robot:
         for _ in range(frames):
             from matplotlib.colors import hsv_to_rgb
 
-
             image = self.currentImage
             image_rgb = hsv_to_rgb(image)
             #print(image_rgb.shape)
@@ -357,7 +354,6 @@ class EL5206_Robot:
             detection, rotate_angle = self.detect_famous(image)
             print(rotate_angle)
             
-
             plt.imshow(detection)
             #self.rotate_to(rotate_angle)
             #plt.draw()
@@ -391,38 +387,50 @@ class EL5206_Robot:
         for d, theta in laser:
             F -= np.sin(theta)/(d*d)
             S -= np.cos(theta)/(d*d)
-        
+
         F_r = np.linalg.norm(np.array([S, F]))
-        F_theta = np.arctan2(F,S)
+        F_theta = np.arctan2(F, S)
 
         return F_r, F_theta # repulsión en los ejes polares
     
-    def folow_robot(self,k_a, k_r, timeout = 60):
-
+    def follow_robot(self, k_a, k_r, timeout = 60):
         start_time = time.time()
         while time.time() - start_time < timeout and not rospy.is_shutdown():
-            
             # Observación de los sensores
             laser = self.get_laser()
             image = self.currentImage
+            depth = self.currentDepth[:, :, 2]
 
             # Generamos la detección del robot
-            _, rotate_angle = self.detect_famous(image)
+            image_mask, rotate_angle = self.detect_famous(image)
 
             # Obtenemos la medición de la distancia con el laser (mejorable)
-            idx = np.abs(laser[:,1]-rotate_angle).argmin()
-            dist = laser[idx,0]
+            #idx = np.abs(laser[:, 1] - rotate_angle).argmin()
+            #dist = laser[idx, 0]
+            image_mask_sum = image_mask.sum()
+
+            dist = 0
+            if image_mask_sum != 0:
+                dist = ((depth * image_mask).sum() / image_mask_sum) / 1000
+
+            else:
+                self.move_to(0.05, 0.0)
+                continue
 
             # Obtenemos las fuerzas de repuslsión de posibles obstáculos
             F_rho, F_theta = self.compute_repulsion(laser)
 
-            F_rho_total = dist*k_a+F_rho*k_r # Fuerza en eje rho
-            F_theta_total = rotate_angle*k_a + F_theta*k_r
+            F_rho_total = dist * k_a + F_rho * k_r # Fuerza en eje rho
+            F_theta_total = rotate_angle * k_a + F_theta * k_r
+
+            print(f'F_rho {F_rho_total}, F_theta {F_theta_total} \n dist {dist}, angle {rotate_angle}')
+
+            F_rho_total = np.min((F_rho_total, 1))
 
             # Publicamos el movimiento del robot
             self.move_to(F_theta_total, F_rho_total)
             
-    print('Movimiento finalizado')
+        print('Movimiento finalizado')
 
 
 if __name__ == '__main__':
@@ -435,7 +443,8 @@ if __name__ == '__main__':
         # node.show_video(10)
         #node.cam_test()
 
-        node.folow_robot(1,0.5)
+        node.follow_robot(k_a=1, k_r=0.1, timeout=60)
 
     except rospy.ROSInterruptException:
         rospy.logerr("ROS Interrupt Exception! Just ignore the exception!")
+
