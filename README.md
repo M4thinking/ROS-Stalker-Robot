@@ -10,6 +10,6 @@ Para la instalación, clonen este repositorio en su directorio HOME, entren a la
 
     cd ~
     git clone https://github.com/felipe-vergaram/el5206_ws.git
-    cd el5206_ws
+    cd ROS-Stalker-Robot
     source install.bash
 

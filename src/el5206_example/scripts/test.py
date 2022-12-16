@@ -237,7 +237,6 @@ class EL5206_Robot:
             gt_x_px = ((gt_arr[:,0] - origin[0])/resolution).astype(int)
             gt_y_px = (height-1+ (origin[1]-gt_arr[:,1])/resolution).astype(int)
 
-            # plt.imshow(img,cmap='gray')
             plt.plot(odom_x_px, odom_y_px, color="red", linewidth=1, label='Odometry')
             plt.plot(gt_x_px, gt_y_px, color="blue", linewidth=1, label='Ground Truth')
             plt.legend()
@@ -277,17 +276,19 @@ class EL5206_Robot:
         lower = np.array([100, 0, 0])
         upper = np.array([255, 0, 0])
 
+        # Obtenemos máscara de del canal rojo con los umbrales lower y upper
         mask = cv2.inRange(img, lower, upper)
-        
         mask_bin = mask
         mask_bin[mask_bin > 122] = 1
-
+        
+        # Calculamos histogramas por columna y fila de la máscara binaria
         column_histogram = mask_bin.sum(axis=0)
         row_histogram = mask_bin.sum(axis=1)
 
         column_sum = column_histogram.sum()  
         row_sum = row_histogram.sum()
-
+        
+        # Calculamos el c entro de la posición de famous detectada
         x_famous = 0
         y_famous = 0
 
@@ -300,15 +301,12 @@ class EL5206_Robot:
         x_famous = int(x_famous/column_sum) if column_sum > 0 else 0
         y_famous = int(y_famous/row_sum) if row_sum > 0 else 0
 
-        # mask_bin[y_famous, x_famous] = 10
-
         x_center = img.shape[1]/2
-
+        
+        # Se calcula el angulo entre stalker y famous con los parámetros de la cámara
         rotate_angle = 0
         if column_sum > 0 and row_sum > 0:
             rotate_angle = (x_center - x_famous) * self.camera_fov / img.shape[1]
-
-        # print(rotate_angle)
 
         return mask_bin, rotate_angle
 
@@ -351,16 +349,11 @@ class EL5206_Robot:
 
             image = self.currentImage
             image_rgb = hsv_to_rgb(image)
-            #print(image_rgb.shape)
-            #print(image)
 
-            #cv2.imshow('a', image)
             detection, rotate_angle = self.detect_famous(image)
             print(rotate_angle)
             
             plt.imshow(detection)
-            #self.rotate_to(rotate_angle)
-            #plt.draw()
             plt.colorbar()
             plt.pause(1)
             plt.close()
@@ -369,14 +362,7 @@ class EL5206_Robot:
     def cam_test(self, counts = 1):
         for _ in range(counts):
             image = self.currentImage
-            #print(self.currentImage)
-            #print(type(self.currentImage),"\n")
-            print(image.shape)
-            
-            #depth = np.copy(image_np[:,:,3])
-
             depth = self.currentDepth
-            #depth[depth>100] = 0
             print(depth.shape, depth.min(), depth.max())
             
             plt.imshow(depth[:,:,2])
@@ -399,6 +385,7 @@ class EL5206_Robot:
     
     def follow_robot(self, k_a, k_r, timeout = 60):
         start_time = time.time()
+        sentido_giro = 1
         while time.time() - start_time < timeout and not rospy.is_shutdown():
             # Observación de los sensores
             laser = self.get_laser()
@@ -409,8 +396,6 @@ class EL5206_Robot:
             image_mask, rotate_angle = self.detect_famous(image)
 
             # Obtenemos la medición de la distancia con el laser (mejorable)
-            #idx = np.abs(laser[:, 1] - rotate_angle).argmin()
-            #dist = laser[idx, 0]
             image_mask_sum = image_mask.sum()
 
             dist = 0
@@ -418,7 +403,7 @@ class EL5206_Robot:
                 dist = ((depth * image_mask).sum() / image_mask_sum) / 1000
 
             else:
-                self.move_to(0.05, 0.0)
+                self.move_to(0.05 * sentido_giro, 0.0)
                 continue
 
             # Obtenemos las fuerzas de repuslsión de posibles obstáculos
@@ -429,6 +414,9 @@ class EL5206_Robot:
 
             print(f'F_rho {F_rho_total}, F_theta {F_theta_total} \n dist {dist}, angle {rotate_angle}')
 
+            # Guardamos ultimo sentido de giro
+            sentido_giro = np.sign(F_theta_total)
+
             F_rho_total = np.min((F_rho_total, 1))
 
             # Publicamos el movimiento del robot
@@ -438,18 +426,25 @@ class EL5206_Robot:
 
     def save_pov(self, path):
         frames = np.stack(self.video)
-        L,H,W,C = frames.shape
-        frameSize = (H, W)
+        from PIL import Image
+        
+        print(frames.shape)
+        L, H, W, C = frames.shape
+        frameSize = (W, H)
 
-        out = cv2.VideoWriter(path,cv2.VideoWriter_fourcc(*'DIVX'), 60, frameSize)
+        with open('frames.npy', 'wb') as f:
+            np.save(f, frames)
+
+        fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
+        out = cv2.VideoWriter(path, fourcc, 60, frameSize)
 
         for f in frames:
+            f = cv2.cvtColor(f, cv2.COLOR_RGB2BGR)
+            f = cv2.resize(f, frameSize)
             out.write(f)
         
         out.release()
         
-
-
 
 
 if __name__ == '__main__':
@@ -458,11 +453,12 @@ if __name__ == '__main__':
     time.sleep(2)
 
     try:
-        #node.angle_follow()
+        # node.angle_follow()
         # node.show_video(10)
-        #node.cam_test()
+        # node.cam_test()
 
         node.follow_robot(k_a=1, k_r=0.1, timeout=60)
+        node.save_pov('pov.mp4')
 
     except rospy.ROSInterruptException:
         rospy.logerr("ROS Interrupt Exception! Just ignore the exception!")
